@@ -1,4 +1,5 @@
-from time import time
+import json
+import time
 import numpy as np
 
 import torch
@@ -6,6 +7,7 @@ import torchvision
 
 LEARNING_RATE = 0.001
 EPOCHS = 10
+BATCH_SIZE = 128
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Running on:", device)
@@ -13,9 +15,13 @@ print("Running on:", device)
 
 
 
+def confusion_matrix(y_true, y_pred, num_classes):
+    cm = torch.zeros(num_classes, num_classes, dtype=torch.long, device=y_true.device)
+    for t, p in zip(y_true.tolist(), y_pred.tolist()):
+        cm[t, p] += 1
+    return cm
 
-
-#stolen from assignment 1
+#stolen from assignment 1, modified for readability and extra features.
 def train_model(model, train_loader, val_loader, criterion, optimizer,
                 epochs, scheduler=None, print_every=1,
                 early_stopping_patience=None, monitor="val_accuracy",
@@ -42,8 +48,20 @@ def train_model(model, train_loader, val_loader, criterion, optimizer,
     """
     model = model.to(device)
     history = {"loss": [], "accuracy": [], "val_loss": [], "val_accuracy": [], "lr": []}
-    better = (lambda new, best: new > best) if monitor == "val_accuracy" else (lambda new, best: new < best)
-    best_score = -np.inf if monitor == "val_accuracy" else np.inf
+
+    def better(new, best):
+        if monitor == "val_accuracy":
+            return new > best
+        else:
+            return new < best
+
+        
+    if monitor == "val_accuracy":
+        best_score = -np.inf
+    else:
+        best_score = np.inf
+
+
     best_epoch, epochs_without_improvement = 0, 0
     t0 = time.time()
 
@@ -103,7 +121,9 @@ def train_model(model, train_loader, val_loader, criterion, optimizer,
                   f"{early_stopping_patience} epochs.")
             break
 
-    print(f"\nTrained in {time.time() - t0:.0f}s. Best {monitor} = {best_score:.4f} at epoch {best_epoch}.")
+    run_time = time.time() - t0
+
+    print(f"\nTrained in {run_time:.0f}s. Best {monitor} = {best_score:.4f} at epoch {best_epoch}. Time per epoch = {run_time / (epoch + 1):.2f}s.")
     if checkpoint_path is not None:
         model.load_state_dict(torch.load(checkpoint_path))         # restore the best epoch
         print(f"Restored the weights from epoch {best_epoch}.")
@@ -127,7 +147,7 @@ random_label3 = noise_file['random_label3']
 
 
 
-dataset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True)
+
 
 # CNN block that convolves with 3x3 kernel and uses relu and then pools into 2x2 blocks, aka half size downsampling, for easier reconfiguration of the model
 def CNN_layer(input_channels, output_channels):
@@ -173,7 +193,28 @@ for model in [modelA, modelB, modelC]:
 
 #seems like model B has the fewest parameters, so we will use that for the rest of the code
 model = modelB.to(device)
-criterion = torch.nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
-train_model(modelB, )
+transform = torchvision.transforms.Compose([torchvision.transforms.ToTensor()])
+
+dataset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform)
+generator = torch.Generator().manual_seed(42)
+train_set, val_set, test_set = torch.utils.data.random_split(dataset, [0.6, 0.2, 0.2], generator=generator)
+
+
+train_loader = torch.utils.data.DataLoader(train_set,   batch_size=BATCH_SIZE, shuffle=True) # shuffle for bedre trening i stedenfor rutine visining av data
+val_loader   = torch.utils.data.DataLoader(val_set,     batch_size=BATCH_SIZE, shuffle=False)
+test_loader  = torch.utils.data.DataLoader(test_set,    batch_size=BATCH_SIZE, shuffle=False)
+
+
+history = train_model(modelB, 
+                      train_loader, 
+                      val_loader, 
+                      torch.nn.CrossEntropyLoss(), 
+                      optimizer, 
+                      epochs=EPOCHS, 
+                      print_every=1,
+)
+
+with open("history.json", "w") as f:
+    json.dump(history, f)
