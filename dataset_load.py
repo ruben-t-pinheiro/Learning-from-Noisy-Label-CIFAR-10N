@@ -5,10 +5,8 @@ import numpy as np
 import torch
 import torchvision
 
-LEARNING_RATE = 0.001
-EPOCHS = 10
-BATCH_SIZE = 128
 
+# check if GPU is available, otherwise use CPU
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Running on:", device)
 
@@ -22,13 +20,17 @@ def confusion_matrix(y_true, y_pred, num_classes):
     return cm
 
 #stolen from assignment 1, modified for readability, extra features and pruned.
-def train_model(model, train_loader, val_noisy_loader, val_clean_loader, criterion, optimizer, epochs):
+def train_model(model, train_loader, val_noisy_loader, val_clean_loader, criterion, optimizer, epochs, max_time):
     model = model.to(device)
     history = {"loss": [], "accuracy": [], "val_noisy_loss": [], "val_noisy_accuracy": [], "val_clean_loss": [], "val_clean_accuracy": [], "lr": []}
 
     t0 = time.time()
 
     for epoch in range(epochs):
+
+        if max_time is not None and time.time() - t0 > max_time:
+            print(f"\nMax time of {max_time} seconds reached, stopping training.")
+            break
 
         model.train()
         running_loss, running_correct, n_seen = 0.0, 0, 0
@@ -127,44 +129,15 @@ def make_dataset(label_set_name, seed, split=[0.6, 0.4]):
     return train_set, val_set_noisy, val_set_clean
 
 
+# streamlining experiments in standardized way, so we can easily run multiple experiments with different parameters and models. intended for batching experminets for AFK science
+def experiment(model, label_set_name, seed, split, epochs, learning_rate, batch_size, experiment_name="default", max_time=None):
+    model = model.to(device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
-
-# CNN block that convolves with 3x3 kernel and uses relu and then pools into 2x2 blocks, aka half size downsampling, for easier reconfiguration of the model
-def CNN_layer(input_channels, output_channels):
-    return [torch.nn.Conv2d(input_channels, output_channels, kernel_size=3, stride=1, padding=1),
-            torch.nn.ReLU(),
-            torch.nn.MaxPool2d(kernel_size=2, stride=2)] 
-
-
-# generic model, nothing fancy or special, just a simple CNN with 3 convolutional layers and 2 fully connected layers, for demonstration purposes
-demo_model = torch.nn.Sequential(
-    *CNN_layer(3, 32),   # 32x32 -> 16x16
-    *CNN_layer(32, 64),  # 16x16   -> 8x8
-    *CNN_layer(64, 128), # 8x8   -> 4x4
-    torch.nn.Flatten(),
-    torch.nn.Linear(4*4*128, 128),
-    torch.nn.ReLU(),
-    torch.nn.Linear(128, 10),
-)
-
-
-# prints the number of parameters in the model, for sizing purposes
-num_params = sum(p.numel() for p in demo_model.parameters())
-print(f"Number of parameters in the model: {num_params:_}")
-
-
-
-
-# demonstration experiment, trains modelB on the clean dataset and saves the history to a json file
-if __name__ == "__main__":
-
-    model = demo_model.to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
-
-    train_set, val_set_noisy, val_set_clean = make_dataset("worst", seed=42, split=[0.8, 0.2]) # 42 because it is the answer to life, the universe and everything
-    train_loader     = torch.utils.data.DataLoader(train_set,   batch_size=BATCH_SIZE, shuffle=True) # shuffle for better training so the model doesn't learn the order of the data
-    val_noisy_loader = torch.utils.data.DataLoader(val_set_noisy,     batch_size=BATCH_SIZE, shuffle=False)
-    val_clean_loader = torch.utils.data.DataLoader(val_set_clean,     batch_size=BATCH_SIZE, shuffle=False)
+    train_set, val_set_noisy, val_set_clean = make_dataset(label_set_name, seed, split)
+    train_loader     = torch.utils.data.DataLoader(train_set,   batch_size=batch_size, shuffle=True) # shuffle for better training so the model doesn't learn the order of the data
+    val_noisy_loader = torch.utils.data.DataLoader(val_set_noisy,     batch_size=batch_size, shuffle=False)
+    val_clean_loader = torch.utils.data.DataLoader(val_set_clean,     batch_size=batch_size, shuffle=False)
 
     history = train_model(model,
                           train_loader,
@@ -172,8 +145,42 @@ if __name__ == "__main__":
                           val_clean_loader,
                           torch.nn.CrossEntropyLoss(),
                           optimizer,
-                          epochs=EPOCHS
+                          epochs=epochs,
+                          max_time=max_time
     )
 
-    with open("history.json", "w") as f:
-        json.dump(history, f)
+    with open(f"{experiment_name}_history.json", "w") as f:
+            json.dump(history, f)
+
+    return history
+
+
+# demonstration experiment, trains model on the clean dataset and saves the history to a json file
+if __name__ == "__main__":
+
+    # CNN block that convolves with 3x3 kernel and uses relu and then pools into 2x2 blocks, aka half size downsampling, for easier reconfiguration of the model
+    def CNN_layer(input_channels, output_channels):
+        return [torch.nn.Conv2d(input_channels, output_channels, kernel_size=3, stride=1, padding=1),
+                torch.nn.ReLU(),
+                torch.nn.MaxPool2d(kernel_size=2, stride=2)] 
+
+    # generic model, nothing fancy or special, just a simple CNN with 3 convolutional layers and 2 fully connected layers, for demonstration purposes
+    demo_model = torch.nn.Sequential(
+        *CNN_layer(3, 32),   # 32x32 -> 16x16
+        *CNN_layer(32, 64),  # 16x16   -> 8x8
+        *CNN_layer(64, 128), # 8x8   -> 4x4
+        torch.nn.Flatten(),
+        torch.nn.Linear(4*4*128, 128),
+        torch.nn.ReLU(),
+        torch.nn.Linear(128, 10),
+    )
+
+    # prints the number of parameters in the model, for sizing purposes
+    num_params = sum(p.numel() for p in demo_model.parameters())
+    print(f"Number of parameters in the model: {num_params:_}")
+
+    LEARNING_RATE = 0.001
+    EPOCHS = 10
+    BATCH_SIZE = 128
+
+    experiment(demo_model, "aggre", seed=42, split=[0.6, 0.4], epochs=EPOCHS, learning_rate=LEARNING_RATE, batch_size=BATCH_SIZE, experiment_name="demo_aggre", max_time=5)
