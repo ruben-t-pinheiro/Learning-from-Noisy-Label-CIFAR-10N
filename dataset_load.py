@@ -90,9 +90,6 @@ def train_model(model, train_loader, val_noisy_loader, val_clean_loader, criteri
     return history
 
 
-
-
-
 # Datasets labels from  https://github.com/UCSC-REAL/cifar-10-100n
 noise_file = torch.load('./CIFAR-10_human.pt')
 
@@ -154,6 +151,9 @@ def experiment(model, label_set_name, seed, split, epochs, learning_rate, batch_
 
     return history
 
+def get_model_parameters(model):
+    return sum(p.numel() for p in model.parameters())
+
 
 # demonstration experiment, trains model on the clean dataset and saves the history to a json file
 if __name__ == "__main__":
@@ -176,8 +176,7 @@ if __name__ == "__main__":
     )
 
     # prints the number of parameters in the model, for sizing purposes
-    num_params = sum(p.numel() for p in demo_model.parameters())
-    print(f"Number of parameters in the model: {num_params:_}")
+    print(f"Number of parameters in the model: {get_model_parameters(demo_model):_}")
 
     LEARNING_RATE = 0.001
     EPOCHS = 10
