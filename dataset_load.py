@@ -1,6 +1,5 @@
 import json
 import time
-import numpy as np
 
 import torch
 import torchvision
@@ -19,10 +18,32 @@ def confusion_matrix(y_true, y_pred, num_classes):
         cm[t, p] += 1
     return cm
 
+
+def evaluate_model(model, data_loader, criterion):
+    num_classes = 10
+    model.eval()
+    val_loss, val_correct, n_val = 0.0, 0, 0
+    cm = torch.zeros(num_classes * num_classes, dtype=torch.long, device=device)
+    with torch.no_grad():
+        for x, y in data_loader:
+            x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
+            logits = model(x)
+            val_loss += criterion(logits, y).item() * y.size(0)
+            val_correct += (logits.argmax(dim=1) == y).sum().item()
+            n_val += y.size(0)
+            cm += confusion_matrix(y, logits.argmax(dim=1), num_classes).view(-1)
+    cm = cm.view(num_classes, num_classes)
+
+    loss = val_loss / n_val
+    accuracy = val_correct / n_val
+    return loss, accuracy, cm
+        
+
+
 #stolen from assignment 1, modified for readability, extra features and pruned.
 def train_model(model, train_loader, val_noisy_loader, val_clean_loader, criterion, optimizer, epochs, max_time):
     model = model.to(device)
-    history = {"loss": [], "accuracy": [], "val_noisy_loss": [], "val_noisy_accuracy": [], "val_clean_loss": [], "val_clean_accuracy": [], "lr": []}
+    history = {"train_loss": [], "train_accuracy": [], "val_noisy_loss": [], "val_noisy_accuracy": [], "val_clean_loss": [], "val_clean_accuracy": [], "lr": [], "val_noisy_cm": [], "val_clean_cm": []}
 
     t0 = time.time()
 
@@ -48,38 +69,28 @@ def train_model(model, train_loader, val_noisy_loader, val_clean_loader, criteri
                 running_correct += (logits.argmax(dim=1) == y).sum().item()
             n_seen += bs
 
-        # ---- validation pass: no gradients, and model.eval() so dropout/batchnorm behave
-        model.eval()
-        val_noisy_loss, val_noisy_correct, n_val_noisy = 0.0, 0, 0
-        val_clean_loss, val_clean_correct, n_val_clean = 0.0, 0, 0
-        with torch.no_grad():
+        training_loss = running_loss / n_seen
+        training_accuracy = running_correct / n_seen
 
-            for x, y in val_noisy_loader:
-                x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
-                logits = model(x)
-                val_noisy_loss += criterion(logits, y).item() * y.size(0)
-                val_noisy_correct += (logits.argmax(dim=1) == y).sum().item()
-                n_val_noisy += y.size(0)
 
-            for x, y in val_clean_loader:
-                x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
-                logits = model(x)
-                val_clean_loss += criterion(logits, y).item() * y.size(0)
-                val_clean_correct += (logits.argmax(dim=1) == y).sum().item()
-                n_val_clean += y.size(0)
+        val_noisy_loss, val_noisy_correct, val_noisy_cm = evaluate_model(model, val_noisy_loader, criterion)
+        val_clean_loss, val_clean_correct, val_clean_cm = evaluate_model(model, val_clean_loader, criterion)
 
-        history["loss"].append(running_loss / n_seen)                           # training
-        history["accuracy"].append(running_correct / n_seen)                    # training
-        history["val_noisy_loss"].append(val_noisy_loss / n_val_noisy)          # noisy validation
-        history["val_noisy_accuracy"].append(val_noisy_correct / n_val_noisy)   # noisy validation
-        history["val_clean_loss"].append(val_clean_loss / n_val_clean)          # clean validation
-        history["val_clean_accuracy"].append(val_clean_correct / n_val_clean)   # clean validation
-        history["lr"].append(optimizer.param_groups[0]["lr"])                   # learning rate
+            
+        history["train_loss"        ].append(training_loss)     # training
+        history["train_accuracy"    ].append(training_accuracy) # training
+        history["val_noisy_loss"    ].append(val_noisy_loss)    # noisy validation
+        history["val_noisy_accuracy"].append(val_noisy_correct) # noisy validation
+        history["val_clean_loss"    ].append(val_clean_loss)    # clean validation
+        history["val_clean_accuracy"].append(val_clean_correct) # clean validation
+        history["val_noisy_cm"      ].append(val_noisy_cm.tolist())   # noisy validation confusion matrix
+        history["val_clean_cm"      ].append(val_clean_cm.tolist())   # clean validation confusion matrix
+        history["lr"].append(optimizer.param_groups[0]["lr"])   # learning rate
 
 
         print(f"Epoch {epoch + 1:3d}/{epochs}"
                 f" - lr: {history['lr'][-1]:.4f}"
-                f" - loss: {history['loss'][-1]:.4f} - acc: {history['accuracy'][-1]:.4f}"
+                f" - loss: {history['train_loss'][-1]:.4f} - acc: {history['train_accuracy'][-1]:.4f}"
                 f" - val_noisy_loss: {history['val_noisy_loss'][-1]:.4f} - val_noisy_acc: {history['val_noisy_accuracy'][-1]:.4f}"
                 f" - val_clean_loss: {history['val_clean_loss'][-1]:.4f} - val_clean_acc: {history['val_clean_accuracy'][-1]:.4f}")
 
@@ -119,7 +130,7 @@ def make_dataset(label_set_name, seed, split=[0.6, 0.4]):
     generator = torch.Generator().manual_seed(seed) # seed for reproducibility
     train_set, val_set_noisy = torch.utils.data.random_split(dataset, split, generator=generator) # only using training and validation sets, test set is not needed when we are reaserching the transient of learning and not total model perfomance.
 
-
+    generator = torch.Generator().manual_seed(seed) # seed for reproducibility
     dataset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform) # Loads the dataset, images and original labels
     _        , val_set_clean = torch.utils.data.random_split(dataset, split, generator=generator)
 
@@ -179,7 +190,8 @@ if __name__ == "__main__":
     print(f"Number of parameters in the model: {get_model_parameters(demo_model):_}")
 
     LEARNING_RATE = 0.001
-    EPOCHS = 10
+    EPOCHS = 1000
     BATCH_SIZE = 128
+    MAX_TIME = 60*5
 
-    experiment(demo_model, "aggre", seed=42, split=[0.6, 0.4], epochs=EPOCHS, learning_rate=LEARNING_RATE, batch_size=BATCH_SIZE, experiment_name="demo_aggre", max_time=5)
+    experiment(demo_model, "aggre", seed=42, split=[0.6, 0.4], epochs=EPOCHS, learning_rate=LEARNING_RATE, batch_size=BATCH_SIZE, experiment_name="demo_aggre", max_time=MAX_TIME)
