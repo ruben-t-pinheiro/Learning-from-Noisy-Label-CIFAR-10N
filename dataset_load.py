@@ -21,48 +21,11 @@ def confusion_matrix(y_true, y_pred, num_classes):
         cm[t, p] += 1
     return cm
 
-#stolen from assignment 1, modified for readability and extra features.
-def train_model(model, train_loader, val_loader, criterion, optimizer,
-                epochs, scheduler=None, print_every=1,
-                early_stopping_patience=None, monitor="val_accuracy",
-                checkpoint_path=None):
-    """
-    Train a model, optionally with a learning-rate schedule, early stopping and checkpointing.
-    This is the PyTorch equivalent of Keras' model.fit() with its callbacks -- written out
-    so that nothing is hidden.
-
-    Arguments:
-    model                   -- the nn.Module to train
-    train_loader/val_loader -- DataLoaders
-    criterion               -- loss function
-    optimizer               -- optimizer
-    epochs                  -- maximum number of passes over the training set
-    scheduler               -- optional torch.optim.lr_scheduler, stepped once per epoch
-    print_every             -- print a line every N epochs
-    early_stopping_patience -- stop if `monitor` has not improved for this many epochs (None = never)
-    monitor                 -- "val_accuracy" (higher is better) or "val_loss" (lower is better)
-    checkpoint_path         -- if set, the best weights so far are saved here and reloaded at the end
-
-    Returns:
-    history -- dict of per-epoch lists: loss, accuracy, val_loss, val_accuracy, lr
-    """
+#stolen from assignment 1, modified for readability, extra features and pruned.
+def train_model(model, train_loader, val_noisy_loader, val_clean_loader, criterion, optimizer, epochs):
     model = model.to(device)
-    history = {"loss": [], "accuracy": [], "val_loss": [], "val_accuracy": [], "lr": []}
+    history = {"loss": [], "accuracy": [], "val_noisy_loss": [], "val_noisy_accuracy": [], "val_clean_loss": [], "val_clean_accuracy": [], "lr": []}
 
-    def better(new, best):
-        if monitor == "val_accuracy":
-            return new > best
-        else:
-            return new < best
-
-        
-    if monitor == "val_accuracy":
-        best_score = -np.inf
-    else:
-        best_score = np.inf
-
-
-    best_epoch, epochs_without_improvement = 0, 0
     t0 = time.time()
 
     for epoch in range(epochs):
@@ -85,59 +48,52 @@ def train_model(model, train_loader, val_loader, criterion, optimizer,
 
         # ---- validation pass: no gradients, and model.eval() so dropout/batchnorm behave
         model.eval()
-        val_loss, val_correct, n_val = 0.0, 0, 0
+        val_noisy_loss, val_noisy_correct, n_val_noisy = 0.0, 0, 0
+        val_clean_loss, val_clean_correct, n_val_clean = 0.0, 0, 0
         with torch.no_grad():
-            for x, y in val_loader:
+
+            for x, y in val_noisy_loader:
                 x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
                 logits = model(x)
-                val_loss += criterion(logits, y).item() * y.size(0)
-                val_correct += (logits.argmax(dim=1) == y).sum().item()
-                n_val += y.size(0)
+                val_noisy_loss += criterion(logits, y).item() * y.size(0)
+                val_noisy_correct += (logits.argmax(dim=1) == y).sum().item()
+                n_val_noisy += y.size(0)
 
-        history["loss"].append(running_loss / n_seen)
-        history["accuracy"].append(running_correct / n_seen)
-        history["val_loss"].append(val_loss / n_val)
-        history["val_accuracy"].append(val_correct / n_val)
-        history["lr"].append(optimizer.param_groups[0]["lr"])
-        if scheduler is not None:
-            scheduler.step()
+            for x, y in val_clean_loader:
+                x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
+                logits = model(x)
+                val_clean_loss += criterion(logits, y).item() * y.size(0)
+                val_clean_correct += (logits.argmax(dim=1) == y).sum().item()
+                n_val_clean += y.size(0)
 
-        score = history[monitor][-1]
-        if better(score, best_score):
-            best_score, best_epoch, epochs_without_improvement = score, epoch + 1, 0
-            if checkpoint_path is not None:
-                torch.save(model.state_dict(), checkpoint_path)   # "model checkpoint" callback
-        else:
-            epochs_without_improvement += 1
+        history["loss"].append(running_loss / n_seen)                           # training
+        history["accuracy"].append(running_correct / n_seen)                    # training
+        history["val_noisy_loss"].append(val_noisy_loss / n_val_noisy)          # noisy validation
+        history["val_noisy_accuracy"].append(val_noisy_correct / n_val_noisy)   # noisy validation
+        history["val_clean_loss"].append(val_clean_loss / n_val_clean)          # clean validation
+        history["val_clean_accuracy"].append(val_clean_correct / n_val_clean)   # clean validation
+        history["lr"].append(optimizer.param_groups[0]["lr"])                   # learning rate
 
-        if print_every and ((epoch + 1) % print_every == 0 or epoch == 0):
-            print(f"Epoch {epoch + 1:3d}/{epochs}"
-                  f" - lr: {history['lr'][-1]:.4f}"
-                  f" - loss: {history['loss'][-1]:.4f} - acc: {history['accuracy'][-1]:.4f}"
-                  f" - val_loss: {history['val_loss'][-1]:.4f} - val_acc: {history['val_accuracy'][-1]:.4f}")
 
-        if early_stopping_patience is not None and epochs_without_improvement >= early_stopping_patience:
-            print(f"\nEarly stopping at epoch {epoch + 1}: no {monitor} improvement for "
-                  f"{early_stopping_patience} epochs.")
-            break
+        print(f"Epoch {epoch + 1:3d}/{epochs}"
+                f" - lr: {history['lr'][-1]:.4f}"
+                f" - loss: {history['loss'][-1]:.4f} - acc: {history['accuracy'][-1]:.4f}"
+                f" - val_noisy_loss: {history['val_noisy_loss'][-1]:.4f} - val_noisy_acc: {history['val_noisy_accuracy'][-1]:.4f}"
+                f" - val_clean_loss: {history['val_clean_loss'][-1]:.4f} - val_clean_acc: {history['val_clean_accuracy'][-1]:.4f}")
+
 
     run_time = time.time() - t0
-
-    print(f"\nTrained in {run_time:.0f}s. Best {monitor} = {best_score:.4f} at epoch {best_epoch}. Time per epoch = {run_time / (epoch + 1):.2f}s.")
-    if checkpoint_path is not None:
-        model.load_state_dict(torch.load(checkpoint_path))         # restore the best epoch
-        print(f"Restored the weights from epoch {best_epoch}.")
-    history["best_epoch"] = best_epoch
+    print(f"\nTrained in {run_time:.0f}s. Time per epoch = {run_time / (epoch + 1):.2f}s.")
     history["seconds"] = time.time() - t0
     return history
 
 
 
 
-"""
-Datasets labels from  https://github.com/UCSC-REAL/cifar-10-100n
-"""
+
+# Datasets labels from  https://github.com/UCSC-REAL/cifar-10-100n
 noise_file = torch.load('./CIFAR-10_human.pt')
+
 clean_label = noise_file['clean_label']
 worst_label = noise_file['worse_label']
 aggre_label = noise_file['aggre_label']
@@ -145,6 +101,30 @@ random_label1 = noise_file['random_label1']
 random_label2 = noise_file['random_label2']
 random_label3 = noise_file['random_label3']
 
+label_sets = {
+    "clean":   clean_label,
+    "aggre":   aggre_label,
+    "random1": random_label1,
+    "random2": random_label2,
+    "random3": random_label3,
+    "worst":   worst_label,
+}
+
+# makes a dataset woith a specified label set, or the default labels if label_set_name is None
+def make_dataset(label_set_name, seed, split=[0.6, 0.4]):
+    transform = torchvision.transforms.Compose([torchvision.transforms.ToTensor()])
+    dataset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform) # Loads the dataset, images and original labels
+    if label_set_name is not None:
+        dataset.targets = torch.as_tensor(label_sets[label_set_name]).long().tolist() # replace label with different noisy label set
+
+    generator = torch.Generator().manual_seed(seed) # seed for reproducibility
+    train_set, val_set_noisy = torch.utils.data.random_split(dataset, split, generator=generator) # only using training and validation sets, test set is not needed when we are reaserching the transient of learning and not total model perfomance.
+
+
+    dataset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform) # Loads the dataset, images and original labels
+    _        , val_set_clean = torch.utils.data.random_split(dataset, split, generator=generator)
+
+    return train_set, val_set_noisy, val_set_clean
 
 
 
@@ -155,16 +135,9 @@ def CNN_layer(input_channels, output_channels):
             torch.nn.ReLU(),
             torch.nn.MaxPool2d(kernel_size=2, stride=2)] 
 
-modelA = torch.nn.Sequential(
-    *CNN_layer(3, 32),   # 32x32 -> 16x16
-    *CNN_layer(32, 64),  # 16x16   -> 8x8
-    torch.nn.Flatten(),
-    torch.nn.Linear(8*8*64, 128),
-    torch.nn.ReLU(),
-    torch.nn.Linear(128, 10),
-)
 
-modelB = torch.nn.Sequential(
+# generic model, nothing fancy or special, just a simple CNN with 3 convolutional layers and 2 fully connected layers, for demonstration purposes
+demo_model = torch.nn.Sequential(
     *CNN_layer(3, 32),   # 32x32 -> 16x16
     *CNN_layer(32, 64),  # 16x16   -> 8x8
     *CNN_layer(64, 128), # 8x8   -> 4x4
@@ -174,47 +147,33 @@ modelB = torch.nn.Sequential(
     torch.nn.Linear(128, 10),
 )
 
-modelC = torch.nn.Sequential(
-    *CNN_layer(3, 32),   # 32x32 -> 16x16
-    *CNN_layer(32, 64),  # 16x16   -> 8x8
-    *CNN_layer(64, 128), # 8x8   -> 4x4
-    *CNN_layer(128, 256), # 4x4   -> 2x2
-    torch.nn.Flatten(),
-    torch.nn.Linear(2*2*256, 128),
-    torch.nn.ReLU(),
-    torch.nn.Linear(128, 10),
-)
 
 # prints the number of parameters in the model, for sizing purposes
-for model in [modelA, modelB, modelC]:
-    num_params = sum(p.numel() for p in model.parameters())
-    print(f"Number of parameters in the model: {num_params:_}")
+num_params = sum(p.numel() for p in demo_model.parameters())
+print(f"Number of parameters in the model: {num_params:_}")
 
 
-#seems like model B has the fewest parameters, so we will use that for the rest of the code
-model = modelB.to(device)
-optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
-
-transform = torchvision.transforms.Compose([torchvision.transforms.ToTensor()])
-
-dataset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform)
-generator = torch.Generator().manual_seed(42)
-train_set, val_set, test_set = torch.utils.data.random_split(dataset, [0.6, 0.2, 0.2], generator=generator)
 
 
-train_loader = torch.utils.data.DataLoader(train_set,   batch_size=BATCH_SIZE, shuffle=True) # shuffle for bedre trening i stedenfor rutine visining av data
-val_loader   = torch.utils.data.DataLoader(val_set,     batch_size=BATCH_SIZE, shuffle=False)
-test_loader  = torch.utils.data.DataLoader(test_set,    batch_size=BATCH_SIZE, shuffle=False)
+# demonstration experiment, trains modelB on the clean dataset and saves the history to a json file
+if __name__ == "__main__":
 
+    model = demo_model.to(device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
-history = train_model(modelB, 
-                      train_loader, 
-                      val_loader, 
-                      torch.nn.CrossEntropyLoss(), 
-                      optimizer, 
-                      epochs=EPOCHS, 
-                      print_every=1,
-)
+    train_set, val_set_noisy, val_set_clean = make_dataset("worst", seed=42, split=[0.8, 0.2]) # 42 because it is the answer to life, the universe and everything
+    train_loader     = torch.utils.data.DataLoader(train_set,   batch_size=BATCH_SIZE, shuffle=True) # shuffle for better training so the model doesn't learn the order of the data
+    val_noisy_loader = torch.utils.data.DataLoader(val_set_noisy,     batch_size=BATCH_SIZE, shuffle=False)
+    val_clean_loader = torch.utils.data.DataLoader(val_set_clean,     batch_size=BATCH_SIZE, shuffle=False)
 
-with open("history.json", "w") as f:
-    json.dump(history, f)
+    history = train_model(model,
+                          train_loader,
+                          val_noisy_loader,
+                          val_clean_loader,
+                          torch.nn.CrossEntropyLoss(),
+                          optimizer,
+                          epochs=EPOCHS
+    )
+
+    with open("history.json", "w") as f:
+        json.dump(history, f)
