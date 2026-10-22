@@ -142,34 +142,37 @@ def make_dataset(label_set_name, seed, split=[0.6, 0.4]):
 
 # streamlining experiments in standardized way, so we can easily run multiple experiments with different parameters and models. intended for batching experminets for AFK science
 def experiment(model, label_set_name, seed, split, epochs, learning_rate, batch_size, experiment_name="default", max_time=None):
-    model = model.to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    try:
+        model = model.to(device)
+        optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
 
-    loader_args = dict(batch_size=batch_size, num_workers=6, pin_memory=(device.type == "cuda"), persistent_workers=True) # common settings for the loaders, use more GPU to speed up compute
+        loader_args = dict(batch_size=batch_size, num_workers=6, pin_memory=(device.type == "cuda"), persistent_workers=True) # common settings for the loaders, use more GPU to speed up compute
 
 
-    train_set, val_set_noisy, val_set_clean = make_dataset(label_set_name, seed, split)
-    torch.manual_seed(seed)
-    generator = torch.Generator().manual_seed(seed)
-    train_loader     = torch.utils.data.DataLoader(train_set,       shuffle=True,   **loader_args,  generator=generator) # shuffle for better training so the model doesn't learn the order of the data
-    val_noisy_loader = torch.utils.data.DataLoader(val_set_noisy,   shuffle=False,  **loader_args)
-    val_clean_loader = torch.utils.data.DataLoader(val_set_clean,   shuffle=False,  **loader_args)
+        train_set, val_set_noisy, val_set_clean = make_dataset(label_set_name, seed, split)
+        torch.manual_seed(seed)
+        generator = torch.Generator().manual_seed(seed)
+        train_loader     = torch.utils.data.DataLoader(train_set,       shuffle=True,   **loader_args,  generator=generator) # shuffle for better training so the model doesn't learn the order of the data
+        val_noisy_loader = torch.utils.data.DataLoader(val_set_noisy,   shuffle=False,  **loader_args)
+        val_clean_loader = torch.utils.data.DataLoader(val_set_clean,   shuffle=False,  **loader_args)
 
-    history = train_model(model,
-                          train_loader,
-                          val_noisy_loader,
-                          val_clean_loader,
-                          torch.nn.CrossEntropyLoss(),
-                          optimizer,
-                          epochs=epochs,
-                          max_time=max_time,
-                          experiment_name=experiment_name
-    )
+        history = train_model(model,
+                            train_loader,
+                            val_noisy_loader,
+                            val_clean_loader,
+                            torch.nn.CrossEntropyLoss(),
+                            optimizer,
+                            epochs=epochs,
+                            max_time=max_time,
+                            experiment_name=experiment_name
+        )
 
-    
+        
 
-    return history
+        return history
+    except:
+        pass
 
 def get_model_parameters(model):
     return sum(p.numel() for p in model.parameters())
