@@ -1,32 +1,90 @@
 import json
 import matplotlib.pyplot as plt
+import numpy as np
 
-with open("experiment1_history.json", "r") as f:
-    history = json.load(f)
+# Files for each run
+plotName = "different learing rates"
+folder = "results"
+runs = {
+    "1e-2": "experiment_learning_rate_0.01_history.json",
+    "1e-3": "experiment_learning_rate_0.001_history.json",
+    "1e-4": "experiment_learning_rate_0.0001_history.json",
+    "1e-5": "experiment_learning_rate_1e-05_history.json"
+}
 
-fig, ax = plt.subplots(2, 1, figsize=(10, 8))
+# Different colors for each run
+colors = ["tab:blue", "tab:orange", "tab:green", "tab:red"]
+
+# Different line styles for each metric
+styles = {
+    "train": "-",
+    "val_noisy": "--",
+    "val_clean": ":",
+}
+
+fig, ax = plt.subplots(3, 1, figsize=(12, 9))
+
+for (run_name, filename), color in zip(runs.items(), colors):
+
+    with open(f"{folder}/{filename}", "r") as f:
+        history = json.load(f)
+
+    epochs = range(1, len(history["train_loss"]) + 1)
+
+    # Loss
+    for metric, style in styles.items():
+        ax[0].plot(
+            epochs,
+            history[f"{metric}_loss"],
+            color=color,
+            linestyle=style,
+            label=f"{run_name} - {metric}"
+        )
+
+    # Accuracy
+    for metric, style in styles.items():
+        ax[1].plot(
+            epochs,
+            history[f"{metric}_accuracy"],
+            color=color,
+            linestyle=style,
+            label=f"{run_name} - {metric}"
+        )
+
+    # overfitting gap
+    overfitting_gap = np.asarray(history[f"train_accuracy"]) - np.asarray(history[f"val_clean_accuracy"])
+
+    ax[2].plot(
+        epochs,
+        overfitting_gap,
+        color=color,
+        linestyle="-",
+        label=f"{run_name}"
+    )
 
 # Loss plot
-ax[0].plot(history["train_loss"], label="Train Loss")
-ax[0].plot(history["val_noisy_loss"], label="Noisy Validation Loss")
-ax[0].plot(history["val_clean_loss"], label="Clean Validation Loss")
-
 ax[0].set_xlabel("Epoch")
 ax[0].set_ylabel("Loss")
-ax[0].set_title("Training and Validation Loss")
-ax[0].legend()
-ax[0].grid(True)
+ax[0].set_title("Loss")
+ax[0].legend(loc="upper left", bbox_to_anchor=(1.02, 1))
+ax[0].grid(True, alpha=0.3)
+
 
 # Accuracy plot
-ax[1].plot(history["train_accuracy"], label="Train Accuracy")
-ax[1].plot(history["val_noisy_accuracy"], label="Noisy Validation Accuracy")
-ax[1].plot(history["val_clean_accuracy"], label="Clean Validation Accuracy")
-
 ax[1].set_xlabel("Epoch")
 ax[1].set_ylabel("Accuracy")
-ax[1].set_title("Training and Validation Accuracy")
-ax[1].legend()
-ax[1].grid(True)
+ax[1].set_title("Accuracy")
+ax[1].legend(loc="upper left", bbox_to_anchor=(1.02, 1))
+ax[1].grid(True, alpha=0.3)
+
+# overfitting plot
+ax[2].set_xlabel("Epoch")
+ax[2].set_ylabel("Overfitting gap")
+ax[2].set_title("Overfitting gap (train accuracy - clean val accuracy)")
+ax[2].legend(loc="upper left", bbox_to_anchor=(1.02, 1))
+ax[2].grid(True, alpha=0.3)
+
 
 plt.tight_layout()
+plt.savefig(f"plots/{plotName}")
 plt.show()

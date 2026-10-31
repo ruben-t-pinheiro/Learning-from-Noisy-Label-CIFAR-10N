@@ -99,7 +99,7 @@ def train_model(model, train_loader, val_noisy_loader, val_clean_loader, criteri
                 f"   val_clean_loss: {history['val_clean_loss'][-1]:.4f}   val_clean_acc: {history['val_clean_accuracy'][-1]:.4f}"
                 f"   running_time: {time.time() - t0:.0f}s/{max_time:.0f}s")
         
-        with open(f"{experiment_name}_history.json", "w") as f:
+        with open(f"results/{experiment_name}_history.json", "w") as f:
                     json.dump(history, f)
 
     run_time = time.time() - t0
