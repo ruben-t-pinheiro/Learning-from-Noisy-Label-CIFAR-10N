@@ -129,6 +129,7 @@ def load_data():
         "random3": random_label3,
         "worst":   worst_label,
     }
+    return label_sets
 
 # makes a dataset woith a specified label set, or the default labels if label_set_name is None
 def make_dataset(label_set_name, seed, split=[0.6, 0.4]):

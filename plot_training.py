@@ -3,13 +3,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # Files for each run
-plotName = "different learing rates"
+plotName = "different learing rates worst noise"
 folder = "results"
 runs = {
-    "1e-2": "experiment_learning_rate_0.01_history.json",
-    "1e-3": "experiment_learning_rate_0.001_history.json",
-    "1e-4": "experiment_learning_rate_0.0001_history.json",
-    "1e-5": "experiment_learning_rate_1e-05_history.json"
+    "1e-2": "noise_worst_learning_rate_0.01_history.json",
+    "1e-3": "noise_worst_learning_rate_0.001_history.json",
+    "1e-4": "noise_worst_learning_rate_0.0001_history.json",
+    "1e-5": "noise_worst_learning_rate_1e-05_history.json"
 }
 
 # Different colors for each run
