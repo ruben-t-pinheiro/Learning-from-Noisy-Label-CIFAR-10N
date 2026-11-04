@@ -33,11 +33,29 @@ def evaluate_model(model, data_loader, criterion):
     loss = val_loss / n_val
     accuracy = val_correct / n_val
     return loss, accuracy, cm
-        
 
+def evaluate_accuracy(model, data_loader):
+    correct = 0
+    total = len(data_loader.dataset)
+
+    if total == 0:
+        return None
+
+    model.eval()
+    with torch.no_grad():
+        for image, label in data_loader:
+            image = image.to(device, non_blocking=True)
+            label = label.to(device, non_blocking=True)
+            logits = model(image)
+            correct += (logits.argmax(dim=1) == label).sum().item()
+
+    return correct / total
 
 #stolen from assignment 1, modified for readability, extra features and pruned.
-def train_model(model, train_loader, val_noisy_loader, val_clean_loader, criterion, optimizer, epochs, max_time, experiment_name):
+def train_model(model, train_loader, val_noisy_loader, val_clean_loader, 
+                correctly_labeled_loader, incorrectly_labeled_loader, 
+                incorrectly_labeled_clean_loader, criterion, optimizer, epochs, max_time, experiment_name):
+    
     model = model.to(device)
     history = {"train_loss": [], 
                "train_accuracy": [], 
@@ -47,7 +65,10 @@ def train_model(model, train_loader, val_noisy_loader, val_clean_loader, criteri
                "val_clean_accuracy": [], 
                "lr": [], 
                "val_noisy_cm": [], 
-               "val_clean_cm": []}
+               "val_clean_cm": [],
+               "correctly_labeled_accuracy": [],
+               "incorrectly_labeled_accuracy": [],
+               "incorrectly_labeled_clean_accuracy": []}
 
     t0 = time.time()
 
@@ -79,7 +100,9 @@ def train_model(model, train_loader, val_noisy_loader, val_clean_loader, criteri
 
         val_noisy_loss, val_noisy_accuracy, val_noisy_cm = evaluate_model(model, val_noisy_loader, criterion)
         val_clean_loss, val_clean_accuracy, val_clean_cm = evaluate_model(model, val_clean_loader, criterion)
-
+        correctly_labeled_accuracy = evaluate_accuracy(model, correctly_labeled_loader)
+        incorrectly_labeled_accuracy = evaluate_accuracy(model, incorrectly_labeled_loader)
+        incorrectly_labeled_clean_accuracy = evaluate_accuracy(model, incorrectly_labeled_clean_loader)
             
         history["train_loss"        ].append(training_loss)         # training
         history["train_accuracy"    ].append(training_accuracy)     # training
@@ -89,6 +112,9 @@ def train_model(model, train_loader, val_noisy_loader, val_clean_loader, criteri
         history["val_clean_accuracy"].append(val_clean_accuracy)    # clean validation
         history["val_noisy_cm"      ].append(val_noisy_cm.tolist()) # noisy validation confusion matrix
         history["val_clean_cm"      ].append(val_clean_cm.tolist()) # clean validation confusion matrix
+        history["correctly_labeled_accuracy"].append(correctly_labeled_accuracy) #accuracy when the lable is corect of the treaining data
+        history["incorrectly_labeled_accuracy"].append(incorrectly_labeled_accuracy) #accuracy when the lable is not corect treaining data
+        history["incorrectly_labeled_clean_accuracy"].append(incorrectly_labeled_clean_accuracy) #accuracy with the corect lable for the wrongly labald treaining data
         history["lr"].append(optimizer.param_groups[0]["lr"])       # learning rate
 
 
@@ -97,7 +123,11 @@ def train_model(model, train_loader, val_noisy_loader, val_clean_loader, criteri
                 f"   loss: {history['train_loss'][-1]:.4f}   acc: {history['train_accuracy'][-1]:.4f}"
                 f"   val_noisy_loss: {history['val_noisy_loss'][-1]:.4f}   val_noisy_acc: {history['val_noisy_accuracy'][-1]:.4f}"
                 f"   val_clean_loss: {history['val_clean_loss'][-1]:.4f}   val_clean_acc: {history['val_clean_accuracy'][-1]:.4f}"
+                f"   correctly_labeled_accuracy: {format(history['correctly_labeled_accuracy'][-1])}"
+                f"   incorrectly_labeled_accuracy: {format(history['incorrectly_labeled_accuracy'][-1])}"
+                f"   incorrectly_labeled_clean_accuracy: {format(history['incorrectly_labeled_clean_accuracy'][-1])}"
                 f"   running_time: {time.time() - t0:.0f}s/{max_time:.0f}s")
+        
         
         with open(f"results/{experiment_name}_history.json", "w") as f:
                     json.dump(history, f)
@@ -108,6 +138,15 @@ def train_model(model, train_loader, val_noisy_loader, val_clean_loader, criteri
     history["epochs_run"] = epochs_run
     history["seconds"] = time.time() - t0
     return history
+
+def format(value):
+
+    if value == None:
+        string = "N/A"
+    else:
+        string = f"{value:.4f}"
+
+    return string
 
 def load_data():
     global label_sets
@@ -137,6 +176,7 @@ def make_dataset(label_set_name, seed, split=[0.6, 0.4]):
     transform = torchvision.transforms.ToTensor()
     noisy_dataset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform)
     clean_dataset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform)
+    test_dataset = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transform)
 
     if label_set_name is not None:
         noisy_dataset.targets = torch.as_tensor(label_sets[label_set_name]).long().tolist() # replace label with different noisy label set
@@ -145,9 +185,28 @@ def make_dataset(label_set_name, seed, split=[0.6, 0.4]):
     train_set, val_set_noisy = torch.utils.data.random_split(noisy_dataset, split, generator=generator)
     val_set_clean = torch.utils.data.Subset(clean_dataset, val_set_noisy.indices)
 
-    return train_set, val_set_noisy, val_set_clean
+    return train_set, val_set_noisy, val_set_clean, test_dataset
 
+def make_evaluation_datasets(train_set, val_set_clean):
 
+    noisy_dataset = train_set.dataset
+    clean_dataset = val_set_clean.dataset
+
+    correct_lable_index = []
+    incorrect_label_index = []
+
+    for index in train_set.indices:
+        if noisy_dataset.targets[index] == clean_dataset.targets[index]:
+            correct_lable_index.append(index)
+        else:
+            incorrect_label_index.append(index)
+
+    correctly_labeled_data = torch.utils.data.Subset(noisy_dataset, correct_lable_index)
+    incorrectly_labeled_data = torch.utils.data.Subset(noisy_dataset, incorrect_label_index)
+    incorrectly_labeled_clean_data = torch.utils.data.Subset(clean_dataset, incorrect_label_index)
+
+    return correctly_labeled_data, incorrectly_labeled_data, incorrectly_labeled_clean_data
+    
 # streamlining experiments in standardized way, so we can easily run multiple experiments with different parameters and models. intended for batching experminets for AFK science
 def experiment(model, label_set_name, seed, split, epochs, learning_rate, batch_size, experiment_name="default", max_time=60, Number_of_workers = 6):
     try:
@@ -158,28 +217,50 @@ def experiment(model, label_set_name, seed, split, epochs, learning_rate, batch_
         loader_args = dict(batch_size=batch_size, num_workers=Number_of_workers, pin_memory=(device.type == "cuda"), persistent_workers=True) # common settings for the loaders, use more GPU to speed up compute
 
 
-        train_set, val_set_noisy, val_set_clean = make_dataset(label_set_name, seed, split)
+        train_set, val_set_noisy, val_set_clean, test_dataset = make_dataset(label_set_name, seed, split)
+        correctly_labeled_data, incorrectly_labeled_data, incorrectly_labeled_clean_data = make_evaluation_datasets(train_set, val_set_clean)
+        
         torch.manual_seed(seed)
         generator = torch.Generator().manual_seed(seed)
+        test_loader = torch.utils.data.DataLoader(test_dataset,   shuffle=False,  **loader_args)
         train_loader     = torch.utils.data.DataLoader(train_set,       shuffle=True,   **loader_args,  generator=generator) # shuffle for better training so the model doesn't learn the order of the data
         val_noisy_loader = torch.utils.data.DataLoader(val_set_noisy,   shuffle=False,  **loader_args)
         val_clean_loader = torch.utils.data.DataLoader(val_set_clean,   shuffle=False,  **loader_args)
+        correctly_labeled_loader = torch.utils.data.DataLoader(correctly_labeled_data,   shuffle=False,  **loader_args)
+        incorrectly_labeled_loader = torch.utils.data.DataLoader(incorrectly_labeled_data,   shuffle=False,  **loader_args)
+        incorrectly_labeled_clean_loader = torch.utils.data.DataLoader(incorrectly_labeled_clean_data,   shuffle=False,  **loader_args)
+
+        criterion = torch.nn.CrossEntropyLoss()
 
         history = train_model(model,
                             train_loader,
                             val_noisy_loader,
                             val_clean_loader,
-                            torch.nn.CrossEntropyLoss(),
+                            correctly_labeled_loader, 
+                            incorrectly_labeled_loader, 
+                            incorrectly_labeled_clean_loader,
+                            criterion,
                             optimizer,
                             epochs=epochs,
                             max_time=max_time,
                             experiment_name=experiment_name
         )
 
+        test_loss, test_accuracy, test_cm = evaluate_model(model, test_loader, criterion)
         
+        history["test_loss"] = test_loss
+        history["test_accuracy"] = test_accuracy
+        history["test_cm"] = test_cm.tolist()
+
+        with open(f"results/{experiment_name}_history.json", "w") as f:
+            json.dump(history, f)
+
+        print(f"Test loss: {test_loss}")
+        print(f"Test accuracy: {test_accuracy}\n")
 
         return history
     except:
+        print("experiment faild")
         pass
 
 def get_model_parameters(model):
@@ -203,33 +284,3 @@ def model():
         torch.nn.Linear(128, 10),
     )
 
-
-# demonstration experiment, trains model on the clean dataset and saves the history to a json file
-if __name__ == "__main__":
-
-    LEARNING_RATE = 0.001
-    EPOCHS = 10
-    BATCH_SIZE = 128
-    MAX_TIME = 12
-    SEED = 42
-    WORKERS = 1
-
-    device_to_run_on()
-    load_data()
-
-    torch.manual_seed(SEED) # seed random innit for reproducability
-    demo_model = model()
-
-    # prints the number of parameters in the model, for sizing purposes
-    print(f"Number of parameters in the model: {get_model_parameters(demo_model):_}")
-
-    experiment(demo_model, 
-        "aggre", 
-        seed=SEED, 
-        split=[0.6, 0.4], 
-        epochs=EPOCHS, 
-        learning_rate=LEARNING_RATE, 
-        batch_size=BATCH_SIZE, 
-        experiment_name="demo_aggre", 
-        max_time=MAX_TIME,
-        Number_of_workers = WORKERS)
