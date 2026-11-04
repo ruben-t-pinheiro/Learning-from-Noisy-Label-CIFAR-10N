@@ -3,21 +3,21 @@ import torch
 
 
 if __name__ == "__main__":
-    EPOCHS = 10
+    EPOCHS = 100
     BATCH_SIZE = 128
     MAX_TIME = 60*15
-    SEEDS = [42]
-    WORKERS = 2 #mellom 2 og 4 fungerte bra for ruben større antall WORKERS for mange EPOCHS
+    SEEDS = [42, 43, 100, 200, 300]
+    WORKERS = 6 #mellom 2 og 4 fungerte bra for ruben større antall WORKERS for mange EPOCHS
 
     device_to_run_on()
     label_sets = load_data()
 
-    learning_rates = [0.01]
+    learning_rates = [0.01, 0.001, 0.0001, 0.00001]
 
+    for seed in SEEDS:  # aproximately 1 hour per seed for 100 epochs with 4 workers on a rx 7900xt gpu, needed about 6 hours of compute time for all seeds 
+        for noise in label_sets:
+            for learning_rate in learning_rates:
 
-    for noise in label_sets:
-        for learning_rate in learning_rates:
-            for seed in SEEDS: 
                 torch.manual_seed(seed) # seed random innit for reproducability
                 demo_model = model()
 
