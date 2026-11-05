@@ -133,9 +133,9 @@ def plot_label_Accuracy_one_plot(plotName, label_sets, learning_rates, seeds, ma
 if __name__ == "__main__":
     plotName = "Accuracy based on if the label is correct"
     #label_sets = ["clean", "aggre", "random1", "random2", "random3", "worst"]
-    label_sets = ["clean", "aggre","random2", "worst"]
-    learning_rates = [0.01]
-    seeds = [42]
-    epochs = 10
+    label_sets = ["random2"]
+    learning_rates = [0.001]
+    seeds = [42, 100, 200, 300]
+    epochs = 30
     plot_label_Accuracy(plotName, label_sets, learning_rates, seeds, epochs)
     plot_label_Accuracy_one_plot(plotName, label_sets, learning_rates, seeds, epochs)
