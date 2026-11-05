@@ -259,9 +259,8 @@ def experiment(model, label_set_name, seed, split, epochs, learning_rate, batch_
         print(f"Test accuracy: {test_accuracy}\n")
 
         return history
-    except:
-        print("experiment faild")
-        pass
+    except Exception as e:
+        print(f"Experiment '{experiment_name}' failed: {e}")
 
 def get_model_parameters(model):
     return sum(p.numel() for p in model.parameters())
