@@ -5,19 +5,17 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider
 
-PATH = "/home/jenspetersen/Desktop/ELE680/Learning-from-Noisy-Label-CIFAR-10N/demo_aggre_history.json"
+noise = "random2"
+learning_rate = 0.001
+seed = 42
+EPOCHS = 100
+experiment_name =  f"noise_{noise}_learning_rate_{learning_rate}_seed{seed}_epochs_{EPOCHS}"
+FOLDER = "results_learningrates"
+PATH = f"{FOLDER}/{experiment_name}_history.json"
 
-# --- Load data (or generate a demo set that slowly "learns" a diagonal) ---
-if os.path.exists(PATH):
-    with open(PATH) as f:
-        cms = np.array(json.load(f)["val_clean_cm"], dtype=float)
-else:
-    rng = np.random.default_rng(0)
-    n_epochs = 30
-    cms = np.stack([
-        np.eye(10) * (e + 1) * 10 + rng.random((10, 10)) * (n_epochs - e) * 5
-        for e in range(n_epochs)
-    ])
+
+with open(PATH, "r") as f:
+    cms = np.array(json.load(f)["val_clean_cm"], dtype=float)   
 
 print(f"Shape: {cms.shape}")  # [epochs, 10, 10]
 
