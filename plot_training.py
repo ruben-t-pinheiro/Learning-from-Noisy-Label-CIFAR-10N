@@ -3,22 +3,24 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # Files for each run
-plotName = "different learning rates no noise"
-folder = "results"
+plotName = "different batch sizes aggre noise clean val"
+folder = "results_batchtest"
 runs = {
-    "1e-2": "noise_clean_learning_rate_0.01_history.json",
-    "1e-3": "noise_clean_learning_rate_0.001_history.json",
-    "1e-4": "noise_clean_learning_rate_0.0001_history.json",
-    "1e-5": "noise_clean_learning_rate_1e-05_history.json"
+    "16": "BATCH_TEST_16_noise_aggre_lr_0.0001_seed42_epochs_50_history.json",
+    "32": "BATCH_TEST_32_noise_aggre_lr_0.0001_seed42_epochs_50_history.json",
+    "64": "BATCH_TEST_64_noise_aggre_lr_0.0001_seed42_epochs_50_history.json",
+    "128": "BATCH_TEST_128_noise_aggre_lr_0.0001_seed42_epochs_50_history.json",
+    "256": "BATCH_TEST_256_noise_aggre_lr_0.0001_seed42_epochs_50_history.json",
+    "512": "BATCH_TEST_512_noise_aggre_lr_0.0001_seed42_epochs_50_history.json"
 }
 
 # Different colors for each run
-colors = ["tab:blue", "tab:orange", "tab:green", "tab:red"]
+colors = ["tab:blue", "tab:orange", "tab:green", "tab:red", "tab:purple", "tab:brown"]
 
 # Different line styles for each metric
 styles = {
-    "train": "-",
-    "val_noisy": "--",
+    #"train": "-",
+    #"val_noisy": "--",
     "val_clean": ":",
 }
 
