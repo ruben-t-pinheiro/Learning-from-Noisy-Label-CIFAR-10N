@@ -3,11 +3,11 @@ import torch
 
 
 if __name__ == "__main__":
-    EPOCHS = 30
+    EPOCHS = 100
     BATCH_SIZE = 128
     MAX_TIME = 60*15
     SEEDS = [42, 43, 100, 200, 300]
-    WORKERS = 3 #mellom 2 og 4 fungerte bra for ruben større antall WORKERS for mange EPOCHS
+    WORKERS = 4 
 
     device_to_run_on()
     label_sets = load_data()
