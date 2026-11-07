@@ -31,7 +31,7 @@ def plot_label_Accuracy(folder, plotName, label_sets, learning_rates, seeds, max
                     history["correctly_labeled_accuracy"],
                     color=colors[experiment],
                     linestyle="-",
-                    label=f"{noise}, lr={learning_rate},seed={seed}"
+                    label=f"noise={noise}, lr={learning_rate}"
                 )
 
                 ax[1].plot(
@@ -39,7 +39,7 @@ def plot_label_Accuracy(folder, plotName, label_sets, learning_rates, seeds, max
                     history["incorrectly_labeled_accuracy"],
                     color=colors[experiment],
                     linestyle="-",
-                    label=f"{noise}, lr={learning_rate},seed={seed}"
+                    label=f"noise={noise}, lr={learning_rate}"
                 )
 
                 ax[2].plot(
@@ -47,7 +47,7 @@ def plot_label_Accuracy(folder, plotName, label_sets, learning_rates, seeds, max
                     history["incorrectly_labeled_clean_accuracy"],
                     color=colors[experiment],
                     linestyle="-",
-                    label=f"{noise}, lr={learning_rate},seed={seed}"
+                    label=f"noise={noise}, lr={learning_rate}"
                 )
 
                 experiment += 1
@@ -113,7 +113,7 @@ def plot_label_Accuracy_one_plot(folder, plotName, label_sets, learning_rates, s
                         history[f"{metric}_accuracy"],
                         color=colors[experiment],
                         linestyle=style,
-                        label=f"{metric}, {noise}, lr={learning_rate},seed={seed}"
+                        label=f"noise={noise}, lr={learning_rate}"
                     )
 
                 experiment += 1

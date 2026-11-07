@@ -1,3 +1,5 @@
 # Learning-from-Noisy-Label-CIFAR-10N
 
 Av Jens Petersen og Ruben T. Pinheiro
+
+To recreate the experiments, run the experiments python scripts. These are configured with the paramters used in the assignement. The results appear as json files in the result folder. We manually copied the results from each experiment into their own folders for organization. Then the json files are fed into the plotting. Here you need to do a bit of thinking yourself as it was hapazardly put togheter and developed as we plotted. The plotting scripts was designed to be configurable to which folder and which files they plot and to which metric is plotted. The method in each of the plotting scripts differs a bit but should be reasonably simple enough to use. For the average seed plotting the many seed runs needs to be combined. This is done by running the averageTrainingRuns.py script. This will generate new json files aggreagated from the multiple original json files. For plot label accuracy you can select the combination of runs that should be plotted by filling out the parameters used for naming the json files, the current limit is 4 plots at a time.
